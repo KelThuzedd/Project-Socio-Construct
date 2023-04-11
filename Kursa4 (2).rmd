@@ -1,0 +1,281 @@
+---
+title: "ATFL"
+output: 
+  html_document:
+    theme: flatly
+runtime: shiny
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(Warning = FALSE)
+```
+
+# Предварительная подготовка
+
+## Установка библиотек
+
+```{r eval=FALSE, include=FALSE}
+install.packages("readxl")
+install.packages("tidyverse")
+install.packages("dplyr")
+install.packages("plyr")
+install.packages("ggplot2") 
+install.packages("forecast") 
+install.packages("lmtest")
+install.packages("tseries")
+install.packages("urca")
+install.packages("TSA")
+install.packages("vars")
+install.packages("stats")
+install.packages("tsDyn")
+install.packages("R.utils")
+install.packages("rugarch")
+install.packages("strucchange")
+install.packages("Matrix")
+install.packages("matlib")
+install.packages("portes")
+install.packages("nlme")
+install.packages("readxl")
+install.packages("rlang")
+install.packages("thematic")
+
+
+```
+
+## Загрузка библиотек
+
+```{r}
+library(readr)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(sandwich)
+library(lmtest)
+library(car)
+library(broom)
+library(xtable)
+library(ggpubr)
+library(stargazer)
+library(modelsummary)
+library(nlme)
+library(readxl)
+library(rlang)
+library(tidyverse)
+library("forecast")
+library("lmtest")
+library("tseries")
+library("vars")
+library("urca")
+library("TSA")
+library("Matrix")
+library("matlib")
+library(tseries)
+library("modelsummary")
+library(thematic) # пакет для автоматической установки стилей графиков 
+library(quantmod) # пакет для загрузки информации о биржевых котировках
+library(tidyverse) # набор пакетов по принципу "все включено", в который включен ggplot2
+library(memoise) # пакет кеширования результатов вывода функции
+thematic_rmd(bg = "#1D1E20", accent = "cyan", fg = "grey90", 
+             qualitative = palette.colors(palette = "Tableau")) 
+```
+
+## Функция summary
+
+```{r}
+summary_data <- function(data){
+  colum_name <- grep("[A-z]",names(data), value=TRUE)
+  i<-1
+  for (colum_names in colum_name){
+    if (class(data[,i])=="character"){
+      data<-data[,-i]
+    }else{
+    i<-i+1
+}
+
+  }
+  sok <- datasummary((All(data)) ~Mean + SD + min+max + Histogram , data = data )
+  print(sok)
+  
+}
+```
+
+## Функция для ящиков
+
+```{r}
+graph_box <- function(data){
+  colum_name <- grep("[A-z]",names(data), value=TRUE)
+  i<-1
+  for (colum_names in colum_name){
+    if (class(data[,i])=="character"){
+      data<-data[,-i]
+    }else{
+    i<-i+1
+}
+
+  }
+  print(data)
+  colum_name <- grep("[A-z]",names(data), value=TRUE)
+  g<-1
+  for(x in colum_name){
+      graph<-ggplot(data, aes(y = data[,g]))+ylab(x)+ geom_boxplot()
+      print(graph)
+      g<-g+1
+
+      } 
+}
+```
+
+## Функция проверки на стационарность
+
+```{r}
+adf_test <- function(data){
+  i=1
+  colum_name <- grep("[A-z]",names(data), value=TRUE)
+  for (x in colum_name){
+      num <- as.numeric(unlist(data[i]))
+      test <-adf.test(num)
+      i<-i+1
+      cat(' ',x)
+      if (test$p.value > 0.05){
+        cat(" не стационарен")
+        }else{
+          
+        cat(' стационарен')
+        } 
+      #cat(' P value - ',test$p.value) #Выводит значение p-value
+      print('')
+
+      }
+}
+```
+
+## Функция построения модели
+
+```{r}
+create_model <- function(data,y){
+  
+  colum_name <- grep("[A-z]",names(data), value=TRUE)
+  all<-''
+  
+  for (colum_names in colum_name)
+    
+        if (colum_names == colum_name[1] ){
+          next
+        } else{
+          
+          all<-paste (all,colum_names, sep = "+", collapse = NULL)
+          
+        }
+  sub <- paste(colum_name[1],'~1')
+  spec0<- paste(sub,all)
+
+  reg0 <- lm(spec0, data = data)
+  cov0 <- vcovHC(reg0) #Матрица ковариации
+  se0 <- sqrt(diag(cov0))
+  
+  modelka<-modelsummary(models = list("Модель №1" = reg0),                       # список оцененных моделей
+               vcov = list(cov0),
+               statistic = "std.error",                                     # выводить стандартные ошибки
+               stars = TRUE,                                                # звездочки для уровня значимости
+               gof_omit = ".*",                                             # не выводить никаких показателей качества моделей
+               notes = list("В скобках даны робастные стандартные ошибки",
+                            "Все регрессии содержат контрольные переменные"), # комментарий по поводу расчета стандартных ошибок
+               title = "Результаты оценивания")
+  print(modelka)
+  yes <-0
+  no <-0
+  for (colum_names in colum_name){
+    if(colum_names==colum_name[1]){
+      next
+    }else{
+      
+    
+      Hypothesis <- paste(colum_names,'= 0')
+      hypstat<-linearHypothesis(reg0, 
+                     c(Hypothesis), 
+                     test = "Chisq")
+      pval <-hypstat$`Pr(>Chisq)`
+      pval <=as.numeric(pval)
+      cat(colum_names)
+
+      if(pval[2] > 0.05){
+        print("Не имеет достаточных доказательств влияния")
+        #yes<-yes+1
+      }else{
+        print("Имеет достаточные доказательства о влиянии")
+        #no<-no+1
+      }
+      #print(pval[2]) #выводит значение pvalue для гипотез
+
+    }               
+   
+
+}
+    print(yes)
+
+}
+```
+
+```{r}
+
+```
+
+```{r eval=FALSE, include=FALSE}
+for_model<-data[,-1]
+i<-2
+while(i< 10){
+  for_model_cyl<-for_model[,-i]
+  while(f<)
+  create_model(for_model_cyl,EXCHANGERATE)
+  i<-i+1
+}
+```
+
+# Регрессионный анализ
+
+## Загрузка данных
+
+```{r}
+df <-read.csv("C:/Users/User/Downloads/data_kursach.csv")
+df<-drop_na(df)#Выкидываем пропуски
+attach(df) # закрепляет датасет и можно обращаться к столбцам как к переменным
+df
+```
+
+## Подготовим дата сет для модели
+
+```{r}
+for_model <- df#Этот дата сет мы используем везде дальше , а тут выбрали столбцы которые удаляем
+for_model
+```
+
+## Summary
+
+```{r}
+summary_data(for_model)
+```
+
+## Ящики
+
+```{r}
+graph_box(for_model[,-c(1,4,3)])#Tут можно смотреть на выбросы
+```
+
+## Проверка на стационарность
+
+```{r}
+adf_test(for_model %>% dplyr::select(rozhdaemost, everything() ))
+```
+
+## Создание модели и проверка гипотез
+
+```{r}
+for_model <- df[,c(-1)]
+for_model
+df
+create_model(for_model %>% dplyr::select(rozhdaemost, everything() ),rozhdaemost) #Первая штука это датасет , в котором зависимую переменную переместили на первое место , а после запятой название зависимой переменной 
+```
+
+```{r}
+cor(for_model)
+```
